@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NIAD · Xadrez com IA</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #050513;
+      --surface:      #0d0d2b;
+      --surface2:     #13133d;
+      --purple:       #7c3aed;
+      --purple-light: #a78bfa;
+      --text:         #f1f5f9;
+      --muted:        #64748b;
+      --border:       rgba(139,92,246,0.2);
+      --grad:         linear-gradient(135deg, #1e40af 0%, #7c3aed 100%);
+      --sq-light:     #d6e4f5;
+      --sq-dark:      #1a2d5a;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem 0;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 15% 15%, rgba(30,64,175,0.18) 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 85%, rgba(124,58,237,0.18) 0%, transparent 55%);
+      pointer-events: none;
+    }
+
+    /* ── Screens ── */
+    .screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.3rem;
+      width: 100%;
+      padding: 1.5rem 1.25rem;
+      position: relative;
+      z-index: 1;
+    }
+    .screen.active { display: flex; }
+    #screen-sel  { max-width: 500px; }
+    #screen-game { max-width: 640px; }
+
+    /* ── Intro ── */
+    .logo-wrap { text-align: center; }
+    .logo-img {
+      height: 80px;
+      filter: brightness(0) invert(1) drop-shadow(0 0 12px rgba(124,58,237,0.5));
+      margin-bottom: 0.5rem;
+      display: block;
+      margin-inline: auto;
+    }
+    .logo-sub {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .intro-title {
+      font-family: 'Orbitron', monospace;
+      font-size: 1.45rem;
+      font-weight: 900;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-align: center;
+      line-height: 1.3;
+    }
+    .intro-desc {
+      font-size: 0.82rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.7;
+    }
+    .sel-title {
+      font-size: 0.88rem;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-align: center;
+    }
+
+    /* ── Seleção de cor ── */
+    .choice-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      width: 100%;
+    }
+    .choice-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 1.75rem 1rem;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.7rem;
+      transition: all 0.25s ease;
+    }
+    .choice-btn:hover { background: var(--surface2); transform: translateY(-5px); }
+    .choice-btn.white-btn:hover { border-color: #d6e4f5; box-shadow: 0 18px 40px rgba(214,228,245,0.1); }
+    .choice-btn.black-btn:hover { border-color: var(--purple-light); box-shadow: 0 18px 40px rgba(167,139,250,0.2); }
+    .choice-piece { width: 72px; height: 72px; display: block; }
+    .choice-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+    .white-btn .choice-label { color: #d6e4f5; }
+    .black-btn .choice-label { color: var(--purple-light); }
+    .choice-sub { font-size: 0.72rem; color: var(--muted); }
+
+    /* ── Dificuldade ── */
+    .diff-wrap {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.2rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+    }
+    .diff-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .diff-lbl {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.68rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .diff-val {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.75rem;
+      font-weight: 700;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: linear-gradient(to right, var(--purple) 0%, var(--purple) var(--pct,43%), rgba(139,92,246,0.2) var(--pct,43%));
+      outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--grad);
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(124,58,237,0.6);
+    }
+    .diff-ticks {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.62rem;
+      color: var(--muted);
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo-sm {
+      height: 26px;
+      filter: brightness(0) invert(1) drop-shadow(0 0 6px rgba(124,58,237,0.6));
+    }
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+    .topbar-badge {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.62rem;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    /* ── Status bar ── */
+    .status-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 0.75rem 1.5rem;
+      width: 100%;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      font-size: 0.86rem;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--purple-light);
+      flex-shrink: 0;
+    }
+    .status-dot.pulse { animation: pulse 0.9s ease infinite; }
+    @keyframes pulse {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:0.2; transform:scale(0.55); }
+    }
+
+    /* ── Layout tabuleiro + barra ── */
+    .game-area {
+      width: 100%;
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    /* ── Barra de avaliação ── */
+    .eval-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .eval-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.55rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .eval-bar {
+      width: 22px;
+      flex: 1;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid rgba(139,92,246,0.25);
+      display: flex;
+      flex-direction: column;
+      min-height: 200px;
+    }
+    .eval-dark {
+      background: #1a1a2e;
+      width: 100%;
+      transition: flex 0.6s cubic-bezier(.4,0,.2,1);
+      flex: 50;
+    }
+    .eval-light {
+      background: var(--sq-light);
+      width: 100%;
+      transition: flex 0.6s cubic-bezier(.4,0,.2,1);
+      flex: 50;
+    }
+    .eval-score {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.58rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-align: center;
+      min-width: 22px;
+    }
+
+    /* ── Tabuleiro ── */
+    .board-outer {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 16px 1fr 16px;
+      gap: 3px;
+      min-width: 0;
+    }
+    .rank-col {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+      align-items: center;
+    }
+    .rank-col span {
+      font-size: 0.58rem;
+      color: var(--muted);
+      font-family: 'Orbitron', monospace;
+      line-height: 1;
+    }
+    .board-mid {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .file-row {
+      display: flex;
+    }
+    .file-row span {
+      flex: 1;
+      text-align: center;
+      font-size: 0.58rem;
+      color: var(--muted);
+      font-family: 'Orbitron', monospace;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      border: 2px solid rgba(124,58,237,0.4);
+      border-radius: 6px;
+      overflow: hidden;
+      aspect-ratio: 1;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .sq {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+      transition: filter 0.1s;
+    }
+    .sq.light { background: var(--sq-light); }
+    .sq.dark  { background: var(--sq-dark);  }
+
+    /* Highlights */
+    .sq.selected   { background: rgba(124,58,237,0.5) !important; outline: 2px solid var(--purple); outline-offset: -2px; }
+    .sq.last-from,
+    .sq.last-to    { background: rgba(251,191,36,0.4) !important; }
+    .sq.in-check   { background: rgba(239,68,68,0.6) !important; }
+    .sq.can-move::after {
+      content: '';
+      position: absolute;
+      width: 32%; height: 32%;
+      border-radius: 50%;
+      background: rgba(34,197,94,0.85);
+      pointer-events: none;
+    }
+    .sq.can-capture {
+      outline: 3px solid rgba(239,68,68,0.85);
+      outline-offset: -3px;
+    }
+    .sq:hover { filter: brightness(1.15); }
+    .sq.selected:hover { filter: none; }
+
+    /* Peças SVG */
+    .piece-img {
+      width: 88%;
+      height: 88%;
+      object-fit: contain;
+      pointer-events: none;
+      display: block;
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6));
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      background: var(--grad);
+      border: none;
+      border-radius: 14px;
+      padding: 0.9rem 2rem;
+      color: #fff;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.2s ease;
+    }
+    .btn:hover { transform: translateY(-3px); box-shadow: 0 12px 30px rgba(124,58,237,0.4); }
+    .btn:active { transform: translateY(0); }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 0.85rem 2rem;
+      color: var(--muted);
+      font-family: 'Orbitron', monospace;
+      font-size: 0.78rem;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.2s ease;
+    }
+    .btn-ghost:hover { border-color: var(--purple); color: var(--text); }
+
+    /* ── Overlay ── */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5,5,19,0.88);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .overlay.hidden { display: none; }
+    .result-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 26px;
+      padding: 2.5rem 2rem;
+      text-align: center;
+      max-width: 380px;
+      width: 90%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.2rem;
+      animation: slideUp 0.35s ease;
+    }
+    @keyframes slideUp {
+      from { opacity:0; transform:translateY(30px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .result-emoji { font-size: 3.5rem; }
+    .result-title {
+      font-family: 'Orbitron', monospace;
+      font-size: 1.3rem;
+      font-weight: 900;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .result-sub  { color: var(--muted); font-size: 0.8rem; line-height: 1.6; }
+    .result-btns { display: flex; flex-direction: column; gap: 0.7rem; width: 100%; }
+
+    .footer-note { font-size: 0.67rem; color: var(--muted); opacity: 0.45; text-align: center; }
+  </style>
+</head>
+<body>
+
+<!-- ══ TELA DE SELEÇÃO ══ -->
+<div id="screen-sel" class="screen active">
+  <div class="logo-wrap">
+    <img class="logo-img" src="/static/logo.png" alt="NIAD">
+    <p class="logo-sub">Núcleo de IA e Ciência de Dados · UFLA</p>
+  </div>
+
+  <p class="intro-title">Xadrez<br>com IA</p>
+  <p class="intro-desc">
+    Jogue contra o <strong style="color:var(--purple-light)">Stockfish</strong>,
+    um dos melhores motores de xadrez do mundo.<br>Escolha sua cor e a dificuldade.
+  </p>
+
+  <p class="sel-title">Escolha sua cor</p>
+
+  <div class="choice-grid">
+    <button class="choice-btn white-btn" onclick="iniciar('white')">
+      <img class="choice-piece" src="/static/pieces/wK.svg" alt="Brancas">
+      <span class="choice-label">Brancas</span>
+      <span class="choice-sub">Você joga primeiro</span>
+    </button>
+    <button class="choice-btn black-btn" onclick="iniciar('black')">
+      <img class="choice-piece" src="/static/pieces/bK.svg" alt="Pretas">
+      <span class="choice-label">Pretas</span>
+      <span class="choice-sub">IA joga primeiro</span>
+    </button>
+  </div>
+
+  <div class="diff-wrap">
+    <div class="diff-header">
+      <span class="diff-lbl">Dificuldade</span>
+      <span class="diff-val" id="diff-label">Nível 4 — Intermediário</span>
+    </div>
+    <input type="range" id="diff-slider" min="1" max="8" value="4"
+           oninput="atualizarDiff(this.value)">
+    <div class="diff-ticks">
+      <span>Iniciante</span>
+      <span>Avançado</span>
+      <span>Mestre</span>
+    </div>
+  </div>
+
+  <p class="footer-note">UFLA de Portas Abertas · 2026</p>
+</div>
+
+<!-- ══ TELA DE JOGO ══ -->
+<div id="screen-game" class="screen">
+
+  <div class="topbar">
+    <img class="logo-sm" src="/static/logo.png" alt="NIAD">
+    <div class="topbar-right">
+      <span class="topbar-badge">Stockfish · Nível <span id="topbar-level">4</span></span>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="status-dot" id="status-dot"></span>
+    <span id="status-text">Sua vez!</span>
+  </div>
+
+  <!-- Tabuleiro + barra de avaliação -->
+  <div class="game-area">
+
+    <!-- Tabuleiro -->
+    <div class="board-outer">
+      <div class="rank-col" id="rank-left"></div>
+
+      <div class="board-mid">
+        <div class="file-row" id="files-top"></div>
+        <div class="board" id="board"></div>
+        <div class="file-row" id="files-bot"></div>
+      </div>
+
+      <div class="rank-col" id="rank-right"></div>
+    </div>
+
+    <!-- Barra de avaliação -->
+    <div class="eval-wrap">
+      <span class="eval-label">Eval</span>
+      <div class="eval-bar">
+        <div class="eval-dark"  id="eval-dark"  style="flex:50"></div>
+        <div class="eval-light" id="eval-light" style="flex:50"></div>
+      </div>
+      <span class="eval-score" id="eval-score">0.0</span>
+    </div>
+
+  </div>
+
+  <button class="btn-ghost" onclick="voltarSelecao()">← Nova Partida</button>
+  <p class="footer-note">Stockfish 17.1 · CBurnett pieces · NIAD · UFLA</p>
+</div>
+
+<!-- ══ OVERLAY: RESULTADO ══ -->
+<div id="overlay-result" class="overlay hidden">
+  <div class="result-card">
+    <span class="result-emoji" id="res-emoji">🏆</span>
+    <span class="result-title" id="res-title">Você Ganhou!</span>
+    <p class="result-sub" id="res-sub"></p>
+    <div class="result-btns">
+      <button class="btn" onclick="jogarNovamente()">Jogar Novamente</button>
+      <button class="btn-ghost" onclick="voltarSelecao()">Mudar Configurações</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const FILES = ['a','b','c','d','e','f','g','h'];
+  const RANKS = [8,7,6,5,4,3,2,1];
+  const PIECE_IMG = {
+    K:'wK',Q:'wQ',R:'wR',B:'wB',N:'wN',P:'wP',
+    k:'bK',q:'bQ',r:'bR',b:'bB',n:'bN',p:'bP',
+  };
+  const DIFF_NAMES = {
+    1:'Nível 1 — Iniciante',   2:'Nível 2 — Iniciante+',
+    3:'Nível 3 — Amador',      4:'Nível 4 — Intermediário',
+    5:'Nível 5 — Avançado',    6:'Nível 6 — Expert',
+    7:'Nível 7 — Mestre',      8:'Nível 8 — Grão-Mestre',
+  };
+
+  let playerColor = 'white';
+  let difficulty  = 4;
+  let pieces      = {};
+  let selectedSq  = null;
+  let validMoves  = [];
+  let flipped     = false;
+  let lastAiFrom  = null;
+  let lastAiTo    = null;
+  let checkSq     = null;
+  let active      = false;
+
+  // ── Slider ───────────────────────────────────
+  function atualizarDiff(v) {
+    difficulty = parseInt(v);
+    document.getElementById('diff-label').textContent = DIFF_NAMES[difficulty];
+    const pct = ((v-1)/7*100).toFixed(1) + '%';
+    document.getElementById('diff-slider').style.setProperty('--pct', pct);
+  }
+  atualizarDiff(4);
+
+  // ── Iniciar ───────────────────────────────────
+  async function iniciar(color) {
+    playerColor = color;
+    flipped     = (color === 'black');
+    document.getElementById('topbar-level').textContent = difficulty;
+    trocarTela('screen-sel', 'screen-game');
+    buildBoard();
+    setStatus('Iniciando partida...', true);
+    active = false;
+
+    const data = await post('/new_game', { color, difficulty });
+    applyState(data);
+    active = true;
+
+    if (data.game_over) { mostrarResultado(data); active = false; return; }
+    setStatus('Sua vez!');
+  }
+
+  // ── Construir tabuleiro ───────────────────────
+  function buildBoard() {
+    const filesD = flipped ? [...FILES].reverse() : FILES;
+    const ranksD = flipped ? [...RANKS].reverse() : RANKS;
+
+    ['files-top','files-bot'].forEach(id => {
+      document.getElementById(id).innerHTML =
+        filesD.map(f => `<span>${f}</span>`).join('');
+    });
+    ['rank-left','rank-right'].forEach(id => {
+      document.getElementById(id).innerHTML =
+        ranksD.map(r => `<span>${r}</span>`).join('');
+    });
+
+    const board = document.getElementById('board');
+    board.innerHTML = '';
+    for (let ri = 0; ri < 8; ri++) {
+      for (let fi = 0; fi < 8; fi++) {
+        const rank   = ranksD[ri];
+        const file   = filesD[fi];
+        const sqName = file + rank;
+        const light  = (FILES.indexOf(file) + rank) % 2 === 1;
+        const div    = document.createElement('div');
+        div.className     = `sq ${light ? 'light' : 'dark'}`;
+        div.dataset.sq    = sqName;
+        div.dataset.light = light ? '1' : '0';
+        div.addEventListener('click', () => clickSq(sqName));
+        board.appendChild(div);
+      }
+    }
+  }
+
+  // ── Aplicar estado ────────────────────────────
+  function applyState(data) {
+    pieces     = data.pieces;
+    checkSq    = data.check_square;
+    lastAiFrom = data.ai_move ? data.ai_move.slice(0,2) : null;
+    lastAiTo   = data.ai_move ? data.ai_move.slice(2,4) : null;
+    selectedSq = null;
+    validMoves = [];
+    renderBoard();
+    updateEvalBar(data.eval);
+  }
+
+  // ── Renderizar tabuleiro ──────────────────────
+  function renderBoard() {
+    document.querySelectorAll('.sq').forEach(el => {
+      const sq    = el.dataset.sq;
+      const light = el.dataset.light === '1';
+      el.className = `sq ${light ? 'light' : 'dark'}`;
+
+      if (sq === selectedSq)          el.classList.add('selected');
+      if (sq === lastAiFrom)         el.classList.add('last-from');
+      if (sq === lastAiTo)           el.classList.add('last-to');
+      if (sq === checkSq)            el.classList.add('in-check');
+      if (validMoves.includes(sq))
+        el.classList.add(pieces[sq] ? 'can-capture' : 'can-move');
+
+      const sym = pieces[sq];
+      el.innerHTML = sym
+        ? `<img class="piece-img" src="/static/pieces/${PIECE_IMG[sym]}.svg" draggable="false">`
+        : '';
+    });
+  }
+
+  // ── Barra de avaliação ────────────────────────
+  function updateEvalBar(evalData) {
+    const scoreEl = document.getElementById('eval-score');
+    const darkEl  = document.getElementById('eval-dark');
+    const lightEl = document.getElementById('eval-light');
+
+    if (!evalData) {
+      darkEl.style.flex  = '50';
+      lightEl.style.flex = '50';
+      scoreEl.textContent = '—';
+      return;
+    }
+
+    let pct = 50;
+    let txt = '0.0';
+
+    if (evalData.type === 'cp') {
+      const cp = Math.max(-1200, Math.min(1200, evalData.val));
+      pct = 50 + 50 * Math.tanh(cp / 350);
+      const abs = (Math.abs(evalData.val) / 100).toFixed(1);
+      txt = evalData.val > 0 ? `+${abs}` : evalData.val < 0 ? `-${abs}` : '0.0';
+    } else if (evalData.type === 'mate') {
+      pct = evalData.val > 0 ? 96 : 4;
+      txt = `M${Math.abs(evalData.val)}`;
+    }
+
+    // pct = % vantagem das brancas (parte de baixo)
+    darkEl.style.flex  = (100 - pct).toFixed(1);
+    lightEl.style.flex = pct.toFixed(1);
+    scoreEl.textContent = txt;
+  }
+
+  // ── Clique ────────────────────────────────────
+  async function clickSq(sq) {
+    if (!active) return;
+
+    if (selectedSq && validMoves.includes(sq)) {
+      await mover(selectedSq, sq);
+      return;
+    }
+
+    const sym     = pieces[sq];
+    const isWhite = sym && sym === sym.toUpperCase();
+    const myPiece = sym && ((playerColor === 'white') === isWhite);
+
+    if (myPiece) {
+      selectedSq = sq;
+      validMoves = [];
+      renderBoard();
+      const data = await post('/valid_moves', { square: sq });
+      validMoves = data.moves;
+      renderBoard();
+    } else {
+      selectedSq = null;
+      validMoves = [];
+      renderBoard();
+    }
+  }
+
+  async function mover(from, to) {
+    active = false;
+    selectedSq = null;
+    validMoves = [];
+    setStatus('IA pensando...', true);
+
+    const data = await post('/move', { from, to });
+    if (data.error) {
+      setStatus('Movimento inválido. Tente novamente.');
+      active = true;
+      return;
+    }
+
+    applyState(data);
+    if (data.game_over) { mostrarResultado(data); return; }
+    setStatus('Sua vez!');
+    active = true;
+  }
+
+  // ── Resultado ─────────────────────────────────
+  function mostrarResultado(data) {
+    active = false;
+    const msgs = {
+      player_wins: { e:'🏆', t:'Você Ganhou!',  s:'Incrível! Você derrotou o Stockfish.' },
+      draw:        { e:'🤝', t:'Empate!',        s:'Uma partida equilibrada. Tente de novo!' },
+      ai_wins:     { e:'🤖', t:'IA Venceu!',     s:`Stockfish nível ${difficulty} é muito forte! Tente de novo.` },
+    };
+    const m = msgs[data.result] || msgs.ai_wins;
+    setTimeout(() => {
+      document.getElementById('res-emoji').textContent = m.e;
+      document.getElementById('res-title').textContent = m.t;
+      document.getElementById('res-sub').textContent   = m.s;
+      document.getElementById('overlay-result').classList.remove('hidden');
+    }, 500);
+  }
+
+  async function jogarNovamente() {
+    document.getElementById('overlay-result').classList.add('hidden');
+    await iniciar(playerColor);
+  }
+  function voltarSelecao() {
+    document.getElementById('overlay-result').classList.add('hidden');
+    trocarTela('screen-game', 'screen-sel');
+    active = false;
+  }
+
+  // ── Helpers ───────────────────────────────────
+  function trocarTela(de, para) {
+    document.getElementById(de).classList.remove('active');
+    document.getElementById(para).classList.add('active');
+  }
+  function setStatus(msg, thinking = false) {
+    document.getElementById('status-text').textContent = msg;
+    document.getElementById('status-dot').classList.toggle('pulse', thinking);
+  }
+  async function post(url, body) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return r.json();
+  }
+</script>
+</body>
+</html>
