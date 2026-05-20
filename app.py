@@ -3,7 +3,7 @@ import atexit
 import secrets
 import chess
 import chess.engine
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, session
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
@@ -40,12 +40,23 @@ def quit_engine():
             pass
 
 
-game_state = {
-    'board': None,
-    'player_color': chess.WHITE,
-    'difficulty': 4,
-}
+# ── Sessão por usuário ──────────────────────────
 
+def get_board() -> chess.Board:
+    fen = session.get('fen', chess.Board().fen())
+    return chess.Board(fen)
+
+def get_player_color() -> chess.Color:
+    return chess.WHITE if session.get('player_color', 'white') == 'white' else chess.BLACK
+
+def get_difficulty() -> int:
+    return int(session.get('difficulty', 4))
+
+def save_board(board: chess.Board):
+    session['fen'] = board.fen()
+
+
+# ── Helpers ─────────────────────────────────────
 
 def get_eval(board: chess.Board) -> dict | None:
     if board.is_game_over():
@@ -67,13 +78,14 @@ def board_to_state(board: chess.Board, ai_move_uci: str | None = None) -> dict:
         if piece:
             pieces[chess.square_name(sq)] = piece.symbol()
 
+    player_color = get_player_color()
     outcome  = board.outcome()
     game_over = board.is_game_over()
     result = None
     if game_over and outcome:
         if outcome.winner is None:
             result = 'draw'
-        elif outcome.winner == game_state['player_color']:
+        elif outcome.winner == player_color:
             result = 'player_wins'
         else:
             result = 'ai_wins'
@@ -81,7 +93,7 @@ def board_to_state(board: chess.Board, ai_move_uci: str | None = None) -> dict:
     return {
         'pieces':       pieces,
         'turn':         'white' if board.turn == chess.WHITE else 'black',
-        'player_color': 'white' if game_state['player_color'] == chess.WHITE else 'black',
+        'player_color': 'white' if player_color == chess.WHITE else 'black',
         'in_check':     board.is_check(),
         'check_square': chess.square_name(board.king(board.turn)) if board.is_check() else None,
         'game_over':    game_over,
@@ -91,9 +103,8 @@ def board_to_state(board: chess.Board, ai_move_uci: str | None = None) -> dict:
     }
 
 
-def make_ai_move() -> chess.Move:
-    board = game_state['board']
-    diff  = game_state['difficulty']
+def make_ai_move(board: chess.Board) -> chess.Move:
+    diff = get_difficulty()
     result = get_engine().play(
         board,
         chess.engine.Limit(time=DIFFICULTY_TIME[diff]),
@@ -101,6 +112,8 @@ def make_ai_move() -> chess.Move:
     )
     return result.move
 
+
+# ── Rotas ───────────────────────────────────────
 
 @app.route('/')
 def index():
@@ -110,28 +123,28 @@ def index():
 @app.route('/new_game', methods=['POST'])
 def new_game():
     data  = request.json
-    color = chess.WHITE if data.get('color', 'white') == 'white' else chess.BLACK
+    color = 'white' if data.get('color', 'white') == 'white' else 'black'
     diff  = int(data.get('difficulty', 4))
 
+    session['player_color'] = color
+    session['difficulty']   = diff
+
     board = chess.Board()
-    game_state['board']        = board
-    game_state['player_color'] = color
-    game_state['difficulty']   = diff
+    save_board(board)
 
     ai_uci = None
-    if color == chess.BLACK:
-        move   = make_ai_move()
+    if color == 'black':
+        move   = make_ai_move(board)
         ai_uci = move.uci()
         board.push(move)
+        save_board(board)
 
     return jsonify(board_to_state(board, ai_uci))
 
 
 @app.route('/valid_moves', methods=['POST'])
 def valid_moves():
-    board = game_state['board']
-    if not board:
-        return jsonify({'moves': []})
+    board  = get_board()
     square = chess.parse_square(request.json['square'])
     return jsonify({'moves': [
         chess.square_name(m.to_square)
@@ -142,7 +155,7 @@ def valid_moves():
 
 @app.route('/move', methods=['POST'])
 def make_move():
-    board = game_state['board']
+    board = get_board()
     if not board:
         return jsonify({'error': 'Nenhuma partida em andamento'}), 400
 
@@ -162,12 +175,15 @@ def make_move():
         return jsonify({'error': 'Movimento inválido'}), 400
 
     board.push(move)
+    save_board(board)
+
     if board.is_game_over():
         return jsonify(board_to_state(board))
 
-    ai_mv  = make_ai_move()
+    ai_mv  = make_ai_move(board)
     ai_uci = ai_mv.uci()
     board.push(ai_mv)
+    save_board(board)
 
     return jsonify(board_to_state(board, ai_uci))
 
